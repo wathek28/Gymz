@@ -21,7 +21,7 @@ public class User {
     @Column(nullable = false)
     private Role role;
 
-    @Column(unique = true, nullable = false)
+    @Column(unique = true, nullable = false )
     private String phoneNumber;
 
     @Column(nullable = false)
@@ -39,9 +39,9 @@ public class User {
     private String email;
 
     @Lob
-    @Column(name = "photo", columnDefinition = "LONGBLOB")
-
+    @Column(name = "photo", columnDefinition = "LONGBLOB", nullable = true)
     private byte[] photo;
+    @Column(name = "lastname")
     private String nom;
     private String bio;
     private String fb;

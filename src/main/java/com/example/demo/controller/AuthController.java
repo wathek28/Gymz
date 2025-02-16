@@ -96,15 +96,9 @@ public class AuthController {
     }
 
     @GetMapping("/coaches")
-    public ResponseEntity<List<UserService.UserProfileDto>> getAllCoaches() {
-        try {
-            return ResponseEntity.ok(userService.getAllCoaches().stream()
-                    .map(UserService.UserProfileDto::new)
-                    .toList());
-        } catch (Exception e) {
-            log.error("Erreur de récupération des coachs: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+    public ResponseEntity<List<UserService.CoachProfileDto>> getAllCoaches() {
+        List<UserService.CoachProfileDto> coaches = userService.getAllCoachProfiles();
+        return ResponseEntity.ok(coaches);
     }
 
     @GetMapping("/gyms")
@@ -118,6 +112,16 @@ public class AuthController {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+
+
+
+        @GetMapping("/coaches/{id}")
+        public ResponseEntity<UserService.CoachProfileDto> getCoachById(@PathVariable Long id) {
+            return ResponseEntity.ok(userService.getCoachById(id));
+        }
+
+
 
     @PostMapping("/update-profile")
     public ResponseEntity<?> updateProfile(

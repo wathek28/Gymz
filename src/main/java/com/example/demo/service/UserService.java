@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class UserService {
@@ -186,14 +187,30 @@ public class UserService {
     }
 
     @Transactional
-    public List<User> getAllCoaches() {
-        return userRepository.findByRole(Role.COACH);
+    public List<CoachProfileDto> getAllCoachProfiles() {
+        List<User> coaches = userRepository.findByRole(Role.COACH);
+        return coaches.stream()
+                .map(CoachProfileDto::new)
+                .collect(Collectors.toList());
     }
+
 
     @Transactional
     public List<User> getAllGyms() {
         return userRepository.findByRole(Role.GYM);
     }
+    @Transactional
+    public CoachProfileDto getCoachById(Long id) {
+        User coach = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Coach non trouvé avec l'ID : " + id));
+
+        if (coach.getRole() != Role.COACH) {
+            throw new IllegalArgumentException("L'utilisateur avec l'ID " + id + " n'est pas un coach.");
+        }
+
+        return new CoachProfileDto(coach);
+    }
+
 
 
     @Setter
