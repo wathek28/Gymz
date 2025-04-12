@@ -1,4 +1,4 @@
-/*package com.example.demo.config;
+package com.example.demo.config;
 
 import com.stripe.Stripe;
 import jakarta.annotation.PostConstruct;
@@ -15,4 +15,4 @@ public class StripeConfig {
     public void init() {
         Stripe.apiKey = stripeApiKey;
     }
-}*/
+}
