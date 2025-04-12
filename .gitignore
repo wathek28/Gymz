@@ -32,3 +32,6 @@ build/
 ### VS Code ###
 .vscode/
 src/main/resources/application.properties
+
+git rm --cached src/main/resources/application.properties
+git commit -m "Removed sensitive file from tracking"
