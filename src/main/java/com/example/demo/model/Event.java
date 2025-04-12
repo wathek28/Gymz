@@ -1,13 +1,17 @@
 package com.example.demo.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
+
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.math.BigDecimal;
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 
 @Setter
 @Getter
@@ -54,7 +58,7 @@ public class Event {
     @Column(name = "photo", columnDefinition = "LONGBLOB")
     private byte[] photo;
 
-    // Relation avec l'utilisateur qui crée l'événement (coach ou gym)
+    @JsonIgnore  // Relation avec l'utilisateur qui crée l'événement (coach ou gym)
     @ManyToOne
     @JoinColumn(name = "createur_id", nullable = false)
     private User createur;

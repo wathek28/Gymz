@@ -1,9 +1,12 @@
 package com.example.demo.model;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
+
 import java.time.LocalDateTime;
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 
 @Entity
 @Getter
@@ -15,7 +18,7 @@ public class EventParticipation {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id", nullable = true)  // Modifié pour être nullable
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -25,21 +28,29 @@ public class EventParticipation {
     @Column(name = "participation_date")
     private LocalDateTime participationDate;
 
-    @Column(name = "email")
+    @Column(name = "email", nullable = false)
     private String email;
+
     @Column(name = "first_name", nullable = false)
     private String firstName;
+
     @Column(name = "phone_number", nullable = false)
     private String phoneNumber;
-
 
     @PrePersist
     protected void onCreate() {
         participationDate = LocalDateTime.now();
         if (user != null) {
-            email = user.getEmail();
-            firstName = user.getFirstName();
-            phoneNumber = user.getPhoneNumber();
+            // Si l'utilisateur est défini, on récupère ses infos
+            if (email == null) {
+                email = user.getEmail();
+            }
+            if (firstName == null) {
+                firstName = user.getFirstName();
+            }
+            if (phoneNumber == null) {
+                phoneNumber = user.getPhoneNumber();
+            }
         }
     }
 }

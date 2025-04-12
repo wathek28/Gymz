@@ -20,7 +20,8 @@ public class OffreService {
     @Autowired
     private UserService userService;
 
-
+    @Autowired
+    private NotificationService notificationService;
 
     @Autowired
     private UserRepository userRepository; // Utiliser directement le repository
@@ -42,10 +43,14 @@ public class OffreService {
         offre.setPrix(offreDto.getPrix());
         offre.setCreateur(createur);
         offre.setCodePromo(generateUniqueCode());
-        // Ajout de cette ligne
         offre.setPourcentageReduction(offreDto.getPourcentageReduction());
 
-        return offreRepository.save(offre);
+        Offre offreCreee = offreRepository.save(offre);
+
+        // Ajouter cette ligne pour envoyer les notifications
+        notificationService.notifierNouvelleOffre(offreCreee);
+
+        return offreCreee;
     }
 
     @Transactional(readOnly = true)

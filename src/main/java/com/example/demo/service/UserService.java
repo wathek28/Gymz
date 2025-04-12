@@ -3,27 +3,32 @@ package com.example.demo.service;
 import com.example.demo.model.Role;
 import com.example.demo.model.User;
 import com.example.demo.repository.UserRepository;
-import io.jsonwebtoken.io.IOException;
 import jakarta.transaction.Transactional;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.security.SecureRandom;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+
 @Service
 public class UserService {
-    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
+    public static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
     @Autowired
     private UserRepository userRepository;
@@ -89,12 +94,26 @@ public class UserService {
         return jwtTokenService.generateToken(user);
     }
 
-    private User findUserByPhoneNumber(String phoneNumber) {
-        return userRepository.findByPhoneNumber(phoneNumber)
-                .orElseThrow(() -> {
-                    logger.warn("Utilisateur non trouvé : {}", phoneNumber);
-                    return new IllegalArgumentException("Utilisateur non trouvé");
-                });
+    public User findUserByPhoneNumber(String phoneNumber) {
+        logger.info("Searching for user with phone number: {}", phoneNumber);
+
+        Optional<User> user = userRepository.findByPhoneNumber(phoneNumber);
+        logger.info("User found with exact match: {}", user.isPresent());
+
+        if (user.isEmpty() && phoneNumber.startsWith("+")) {
+            user = userRepository.findByPhoneNumber(phoneNumber.substring(1));
+            logger.info("User found after removing '+': {}", user.isPresent());
+        }
+
+        if (user.isEmpty() && !phoneNumber.startsWith("+")) {
+            user = userRepository.findByPhoneNumber("+" + phoneNumber);
+            logger.info("User found after adding '+': {}", user.isPresent());
+        }
+
+        return user.orElseThrow(() -> {
+            logger.warn("No user found for phone number: {}", phoneNumber);
+            return new IllegalArgumentException("Utilisateur non trouvé");
+        });
     }
 
     private String generateVerificationCode() {
@@ -178,6 +197,8 @@ public class UserService {
         return new UserProfileDto(userRepository.save(user));
     }
 
+
+
     @Getter
     @Setter
     public static class ProfileUpdateDto {
@@ -260,6 +281,8 @@ public class UserService {
     @Getter
     @Setter
     public static class CoachProfileDto {
+        private final Long id;
+
         private final String phoneNumber;
         private final String firstName;
         private final String bio;
@@ -283,6 +306,7 @@ public class UserService {
         private final String email; // Ajout du champ email
 
         public CoachProfileDto(User user) {
+            this.id = user.getId();
             this.phoneNumber = user.getPhoneNumber();
             this.firstName = user.getFirstName();
             this.bio = user.getBio();
@@ -304,6 +328,7 @@ public class UserService {
             this.prixSeance = user.getPrixSeance();
             this.typeCoaching = user.getTypeCoaching();
             this.email = user.getEmail(); // Ajout du champ email
+
         }
     }
 
@@ -385,5 +410,214 @@ public class UserService {
         logger.info("Mise à jour du profil coach pour : {}", phoneNumber);
         return new CoachProfileDto(userRepository.save(user));
     }
+    ////////////comentaire
+
+
+    @Autowired
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    // Méthode pour trouver un utilisateur par son ID
+    public Optional<User> getUserById(Long id) {
+        return userRepository.findById(id);
+    }
+
+    // Autres méthodes pour gérer les utilisateurs
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
+    }
+
+    public User saveUser(User user) {
+        return userRepository.save(user);
+    }
+
+    public void deleteUser(Long id) {
+        userRepository.deleteById(id);
+    }
+
+    /////////// upodate profil user
+    @Transactional
+    public UserProfileDto updateUserPhoto(String phoneNumber, MultipartFile photoFile) {
+        User user = findUserByPhoneNumber(phoneNumber);
+
+        if (!user.isVerified()) {
+            logger.warn("Tentative de mise à jour d'une photo par un utilisateur non vérifié : {}", phoneNumber);
+            throw new IllegalStateException("Utilisateur non vérifié");
+        }
+
+        try {
+            if (photoFile != null && !photoFile.isEmpty()) {
+                user.setPhoto(photoFile.getBytes());
+                logger.info("Photo mise à jour pour l'utilisateur : {}", phoneNumber);
+            } else {
+                user.setPhoto(null);
+                logger.info("Photo supprimée pour l'utilisateur : {}", phoneNumber);
+            }
+
+            userRepository.save(user);
+            return new UserProfileDto(user);
+        } catch (java.io.IOException e) {
+            logger.error("Erreur lors du traitement de la photo pour l'utilisateur {} : {}", phoneNumber, e.getMessage());
+            throw new RuntimeException("Erreur lors du traitement de la photo", e);
+        }
+    }
+
+
+    // Dans UserService.java, ajoutez ces méthodes :
+
+// Dans UserService.java, ajoutez ces méthodes modifiées :
+
+    @Transactional
+    public String initiatePhoneNumberChange(String currentPhoneNumber, String newPhoneNumber) {
+        // Vérifier que l'utilisateur existe
+        User user = findUserByPhoneNumber(currentPhoneNumber);
+
+        // Vérifier que le nouveau numéro n'est pas déjà utilisé
+        String formattedNewPhoneNumber = formatPhoneNumber(newPhoneNumber);
+        if (userRepository.existsByPhoneNumber(formattedNewPhoneNumber)) {
+            logger.warn("Tentative de changement vers un numéro déjà utilisé : {}", formattedNewPhoneNumber);
+            throw new IllegalArgumentException("Ce numéro est déjà utilisé par un autre compte");
+        }
+
+        // Générer un code de vérification
+        String verificationCode = generateVerificationCode();
+
+        // Stocker temporairement le nouveau numéro et le code dans l'entité utilisateur
+        user.setTempPhoneNumber(formattedNewPhoneNumber);
+        user.setVerificationCode(verificationCode);
+        userRepository.save(user);
+
+        // Envoyer le code de vérification au nouveau numéro
+        twilioService.sendSMS(formattedNewPhoneNumber, "Votre code de vérification pour changer de numéro : " + verificationCode);
+
+        logger.info("Code de vérification envoyé au nouveau numéro : {}", formattedNewPhoneNumber);
+        return verificationCode;
+    }
+
+    @Transactional
+    public UserProfileDto confirmPhoneNumberChange(String currentPhoneNumber, String verificationCode) {
+        // Vérifier que l'utilisateur existe
+        User user = findUserByPhoneNumber(currentPhoneNumber);
+
+        // Vérifier que l'utilisateur a un numéro temporaire en attente
+        if (user.getTempPhoneNumber() == null) {
+            logger.warn("Tentative de confirmation sans changement initié : {}", currentPhoneNumber);
+            throw new IllegalStateException("Aucun changement de numéro n'a été initié");
+        }
+
+        // Vérifier le code
+        if (!verificationCode.equals(user.getVerificationCode())) {
+            logger.warn("Code de vérification incorrect pour le changement de numéro : {}", currentPhoneNumber);
+            throw new IllegalArgumentException("Code de vérification incorrect");
+        }
+
+        // Mettre à jour le numéro de téléphone
+        String newPhoneNumber = user.getTempPhoneNumber();
+        user.setPhoneNumber(newPhoneNumber);
+        user.setTempPhoneNumber(null);
+        user.setVerificationCode(null);
+        userRepository.save(user);
+
+        logger.info("Numéro de téléphone changé avec succès de {} à {}", currentPhoneNumber, newPhoneNumber);
+        return new UserProfileDto(user);
+    }
+
+
+
+    @Transactional
+    public UserProfileDto modifierUser(Long userId, UserModificationDto modificationDto) {
+        // Find user by ID instead of phone number
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    logger.warn("Utilisateur non trouvé avec l'ID : {}", userId);
+                    return new IllegalArgumentException("Utilisateur non trouvé");
+                });
+
+        // Vérifier que l'utilisateur est vérifié
+        if (!user.isVerified()) {
+            logger.warn("Tentative de modification d'un profil non vérifié : {}", userId);
+            throw new IllegalStateException("Profil non vérifié");
+        }
+
+        // Mettre à jour le prénom
+        if (modificationDto.getFirstName() != null) {
+            user.setFirstName(modificationDto.getFirstName());
+        }
+
+        // Mettre à jour l'email
+        if (modificationDto.getEmail() != null) {
+            user.setEmail(modificationDto.getEmail());
+        }
+
+        // Mettre à jour la date de naissance
+        if (modificationDto.getBirthDate() != null && !modificationDto.getBirthDate().isEmpty()) {
+            try {
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                LocalDate birthDate = LocalDate.parse(modificationDto.getBirthDate(), formatter);
+                user.setBirthDate(birthDate);
+            } catch (DateTimeParseException e) {
+                logger.error("Format de date invalide : {}", modificationDto.getBirthDate());
+                throw new IllegalArgumentException("Format de date invalide. Utilisez le format JJ/MM/AAAA.");
+            }
+        }
+
+        // Mettre à jour l'adresse
+        if (modificationDto.getAddress() != null) {
+            user.setAddress(modificationDto.getAddress());
+        }
+
+        // Enregistrer les modifications
+        User updatedUser = userRepository.save(user);
+        logger.info("Profil utilisateur mis à jour pour l'utilisateur ID: {}", userId);
+
+        return new UserProfileDto(updatedUser);
+    }
+
+    @Getter
+    @Setter
+    public static class UserModificationDto {
+        @Size(min = 2, max = 50, message = "Le prénom doit contenir entre 2 et 50 caractères")
+        private String firstName;
+
+        @Email(message = "Format d'email invalide")
+        private String email;
+
+        @Pattern(regexp = "^\\d{2}/\\d{2}/\\d{4}$", message = "La date de naissance doit être au format JJ/MM/AAAA")
+        private String birthDate; // Changed from birthDateStr
+
+        @Size(max = 200, message = "L'adresse ne peut pas dépasser 200 caractères")
+        private String address;
+    }
+
+    //////////gym
+    @Data
+    @AllArgsConstructor
+    public static class GymProfileDto {
+        private Long id;
+        private String firstName;
+        private String phoneNumber;
+        private String email;
+        private byte[] photo;
+        private String typeCoaching;
+        private String bio;
+        private String address; // New field for address
+
+        // Updated constructor
+        public GymProfileDto(User user, String typeCoaching, String bio) {
+            this.id = user.getId();
+            this.firstName = user.getFirstName();
+            this.phoneNumber = user.getPhoneNumber();
+            this.email = user.getEmail();
+            this.photo = user.getPhoto();
+            this.typeCoaching = typeCoaching;
+            this.bio = bio;
+            this.address = user.getAddress(); // Get address from user
+        }
+    }
+
+
+
+
 }
 

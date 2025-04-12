@@ -21,11 +21,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+
 
 @RestController
 @RequestMapping("/api/auth")
@@ -75,13 +79,34 @@ public class AuthController {
     @PostMapping("/verify-login")
     public ResponseEntity<?> verifyLogin(@RequestBody @Valid VerificationRequest request) {
         try {
+            // Vérifier le code de connexion
             String token = userService.verifyLoginCode(request.getPhoneNumber(), request.getVerificationCode());
-            return ResponseEntity.ok(new TokenResponse(token));
+
+            // Si le token est généré avec succès
+            if (token != null) {
+                // Récupérer l'utilisateur associé au numéro de téléphone
+                User user = userService.findUserByPhoneNumber(request.getPhoneNumber());
+
+                // Créer un map avec le token, l'ID de l'utilisateur, le firstName, le numéro de téléphone, la photo et l'email
+                Map<String, Object> response = new HashMap<>();
+                response.put("token", token);
+                response.put("userId", user.getId());
+                response.put("firstName", user.getFirstName());
+                response.put("phoneNumber", user.getPhoneNumber());
+                response.put("photo", user.getPhoto());
+                response.put("email", user.getEmail());  // Ajout de l'email
+
+                return ResponseEntity.ok(response);
+            } else {
+                // Si le code de vérification est incorrect
+                return ResponseEntity.badRequest().body(new ErrorResponse("Code incorrect"));
+            }
         } catch (Exception e) {
             log.error("Erreur de vérification login: {}", e.getMessage());
             return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
+
 
 
     @GetMapping("/checkPhoneNumber")
@@ -96,30 +121,61 @@ public class AuthController {
     }
 
     @GetMapping("/coaches")
-    public ResponseEntity<List<UserService.CoachProfileDto>> getAllCoaches() {
+    public ResponseEntity<List<UserService.CoachProfileDto>> getAllCoaches(
+            @RequestParam(required = false) String userId) {
+
+        if (userId != null) {
+            // Exemple de validation basique si vous attendez un ID numérique
+            if (!userId.matches("\\d+")) {
+                return ResponseEntity.badRequest().body(null); // Retourner une erreur 400 si l'ID n'est pas valide
+            }
+            System.out.println("User ID: " + userId);
+        }
+
         List<UserService.CoachProfileDto> coaches = userService.getAllCoachProfiles();
+
+        if (coaches.isEmpty()) {
+            return ResponseEntity.noContent().build(); // Retourner un statut 204 si aucune donnée
+        }
+
         return ResponseEntity.ok(coaches);
     }
 
+
     @GetMapping("/gyms")
-    public ResponseEntity<List<UserService.UserProfileDto>> getAllGyms() {
+    public ResponseEntity<List<UserService.GymProfileDto>> getAllGyms() {
         try {
-            return ResponseEntity.ok(userService.getAllGyms().stream()
-                    .map(UserService.UserProfileDto::new)
-                    .toList());
+            // Récupération des gyms et des informations supplémentaires (type de coaching et bio)
+            List<UserService.GymProfileDto> gyms = userService.getAllGyms().stream()
+                    .map(user -> new UserService.GymProfileDto(
+                            user,
+                            user.getTypeCoaching(), // Récupérer le type de coaching
+                            user.getBio()           // Récupérer la biographie
+                    ))
+                    .collect(Collectors.toList()); // Utiliser collect pour bien transformer le stream en liste
+
+            if (gyms.isEmpty()) {
+                return ResponseEntity.noContent().build(); // Retourner un statut 204 si aucune donnée
+            }
+
+            return ResponseEntity.ok(gyms); // Retourner la liste des gyms avec les informations
         } catch (Exception e) {
             log.error("Erreur de récupération des gyms: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.internalServerError().build(); // Retourner une erreur 500 si une exception est levée
         }
     }
 
 
 
 
-        @GetMapping("/coaches/{id}")
+
+
+
+    @GetMapping("/coaches/{id}")
         public ResponseEntity<UserService.CoachProfileDto> getCoachById(@PathVariable Long id) {
             return ResponseEntity.ok(userService.getCoachById(id));
         }
+
 
 
 
@@ -271,5 +327,105 @@ public class AuthController {
 
         @Email
         private String email; // Ajout du champ email avec validation
+    }
+
+    /// //////////// update profil user
+    @PostMapping("/update-photo")
+    public ResponseEntity<?> updatePhoto(
+            @RequestParam("phoneNumber") String phoneNumber,
+            @RequestParam(value = "photo", required = false) MultipartFile photoFile) {
+        try {
+            UserService.UserProfileDto updatedProfile = userService.updateUserPhoto(phoneNumber, photoFile);
+            return ResponseEntity.ok(updatedProfile);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // Dans AuthController.java, ajoutez ces méthodes et classes :
+
+    // Dans AuthController.java, ajoutez ces méthodes modifiées :
+
+    @PostMapping("/initiate-phone-change")
+    public ResponseEntity<?> initiatePhoneNumberChange(@RequestBody @Valid PhoneChangeRequestNoToken request) {
+        try {
+            String code = userService.initiatePhoneNumberChange(
+                    request.getCurrentPhoneNumber(),
+                    request.getNewPhoneNumber()
+            );
+
+            return ResponseEntity.ok(new CodeResponse(code));
+        } catch (Exception e) {
+            log.error("Erreur lors de l'initiation du changement de numéro: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/confirm-phone-change")
+    public ResponseEntity<?> confirmPhoneNumberChange(@RequestBody @Valid PhoneVerificationRequestNoToken request) {
+        try {
+            UserService.UserProfileDto updatedProfile = userService.confirmPhoneNumberChange(
+                    request.getCurrentPhoneNumber(),
+                    request.getVerificationCode()
+            );
+
+            // Générer un nouveau token avec le nouveau numéro
+            String newToken = jwtTokenService.generateToken(userService.findUserByPhoneNumber(updatedProfile.getPhoneNumber()));
+
+            // Créer une réponse avec le token et le profil mis à jour
+            Map<String, Object> response = new HashMap<>();
+            response.put("token", newToken);
+            response.put("profile", updatedProfile);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur lors de la confirmation du changement de numéro: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    // Classes pour les requêtes sans token
+    @Data
+    public static class PhoneChangeRequestNoToken {
+        @NotBlank(message = "Le numéro de téléphone actuel est requis")
+        private String currentPhoneNumber;
+
+        @NotBlank(message = "Le nouveau numéro de téléphone est requis")
+        private String newPhoneNumber;
+    }
+
+    @Data
+    public static class PhoneVerificationRequestNoToken {
+        @NotBlank(message = "Le numéro de téléphone actuel est requis")
+        private String currentPhoneNumber;
+
+        @NotBlank(message = "Le code de vérification est requis")
+        private String verificationCode;
+    }
+
+    /// ////
+    @PostMapping("/modifier-user")
+    public ResponseEntity<?> modifierUser(
+            @RequestParam("userId") Long userId,
+            @Valid @RequestBody UserService.UserModificationDto userDetails
+    ) {
+        try {
+            // Log the incoming user ID for debugging
+            log.info("Attempting to modify user with ID: {}", userId);
+
+            // Appeler le service pour modifier l'utilisateur
+            UserService.UserProfileDto updatedProfile = userService.modifierUser(userId, userDetails);
+
+            return ResponseEntity.ok(updatedProfile);
+        } catch (IllegalArgumentException e) {
+            log.error("User modification error: {}",
+                    e.getMessage() != null ? e.getMessage() : "Unknown user modification error");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Utilisateur non trouvé"));
+        } catch (Exception e) {
+            log.error("Unexpected error modifying user", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Une erreur est survenue"));
+        }
     }
 }

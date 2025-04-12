@@ -25,6 +25,8 @@ public class EventService {
 
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private NotificationService notificationService;
 
     @Transactional
     public Event createEvent(String phoneNumber, EventDto eventDto) {
@@ -52,7 +54,12 @@ public class EventService {
             event.setPhoto(eventDto.getPhoto());
         }
 
-        return eventRepository.save(event);
+        Event eventCree = eventRepository.save(event);
+
+        // Ajouter cette ligne pour envoyer les notifications
+        notificationService.notifierNouvelEvenement(eventCree);
+
+        return eventCree;
     }
 
     @Transactional(readOnly = true)
