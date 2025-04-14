@@ -7,36 +7,69 @@ on:
       - '**/*.java'
       - 'pom.xml'
       - '.github/workflows/backend-ci-cd.yml'
+      - 'src/main/resources/application*.properties'
   pull_request:
     branches: [ main, master ]
     paths:
       - '**/*.java'
       - 'pom.xml'
+      - 'src/main/resources/application*.properties'
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Set up JDK 11
-      uses: actions/setup-java@v3
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: maven
-    
-    - name: Build with Maven
-      run: mvn -B package --file pom.xml
-    
-    - name: Run tests
-      run: mvn test
-    
-    - name: Upload JAR artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: backend-jar
-        path: target/*.jar
-        retention-days: 5
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Display Java version
+        run: java -version
+
+      - name: Check file encoding
+        run: |
+          echo "Checking application.properties encoding"
+          file src/main/resources/application.properties || echo "File not found"
+
+      - name: Build with Maven
+        run: mvn -B -Dfile.encoding=UTF-8 -Dmaven.resources.filtering=false clean package --file pom.xml
+
+      - name: Run tests
+        run: mvn -Dfile.encoding=UTF-8 -Dmaven.resources.filtering=false test
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v3
+        if: success()
+        with:
+          name: backend-jar
+          path: target/*.jar
+          retention-days: 5
+
+  deploy:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wathek'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: backend-jar
+          path: ./
+
+      - name: Display downloaded artifacts
+        run: ls -la
+
+      - name: Deploy simulation
+        run: |
+          echo "Simulation de déploiement du backend"
+          echo "Dans un environnement réel, cette étape déploierait l'application vers votre serveur"
+          echo "Fichier JAR à déployer:"
+          ls -la *.jar
